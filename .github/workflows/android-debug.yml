@@ -45,9 +45,8 @@ jobs:
         run: |
           gradle -p project :app:assembleDebug
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: hesabeman-1.0.6-debug
-          path: project/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: errorه
+- name: Upload APK
+  uses: actions/upload-artifact@v4
+  with:
+    name: hesabeman-1.0.6-debug
+    path: project/app/build/outputs/apk/debug/app-debug.apk
