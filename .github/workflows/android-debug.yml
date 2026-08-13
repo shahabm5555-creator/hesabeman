@@ -1,10 +1,10 @@
 name: Android Debug APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
@@ -16,43 +16,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract Android project
+      - name: Extract Project
         run: |
-          mkdir -p project
+          mkdir project
           unzip -o hesabeman_android_project_v1.0.6.zip -d project
 
-      - name: Set up JDK 17
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: 17
 
-      - name: Set up Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      - name: Install SDK
-        run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
       - name: Build APK
-        working-directory: project
         run: |
+          cd project
           chmod +x gradlew
           ./gradlew assembleDebug
-
-      - name: Rename APK
-        run: |
-          mkdir -p output
-          cp project/app/build/outputs/apk/debug/app-debug.apk output/hesabdar-1.0.6-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabdar-1.0.6-debug
-          path: output/hesabdar-1.0.6-debug.apk
-          if-no-files-found: error
+          name: hesabeman-1.0.6-debug
+          path: project/app/build/outputs/apk/debug/app-debug.apk
