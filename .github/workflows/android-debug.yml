@@ -15,66 +15,98 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       # 1. دریافت سورس
       - name: Checkout
         uses: actions/checkout@v4
 
       # 2. نصب Java 17
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       # 3. نصب Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. نصب SDK و Build Tools مورد نیاز
+      # 4. نصب SDK مورد نیاز
       - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses || true
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # 5. بررسی ساختار پروژه
-      - name: Check Android Project
+      # 5. بررسی محل پروژه
+      - name: Find Android Project
         run: |
-          echo "Checking project structure..."
+          echo "Current directory:"
+          pwd
 
-          test -f settings.gradle || test -f settings.gradle.kts
-          test -f gradlew
-          test -d app
+          echo ""
+          echo "Repository files:"
+          find . -maxdepth 3 -type f | sort | head -300
 
-          echo "Project structure OK."
-
-      # 6. اجازه اجرای Gradle Wrapper
-      - name: Make Gradle Wrapper executable
+      # 6. پیدا کردن Gradle Wrapper
+      - name: Locate Gradle Wrapper
         run: |
-          chmod +x gradlew
+          echo "Searching for gradlew..."
 
-      # 7. بررسی نسخه Gradle
+          find . -name "gradlew" -type f -print
+
+      # 7. تعیین مسیر پروژه
+      - name: Prepare Gradle
+        run: |
+          if [ -f "./gradlew" ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+            echo "Gradle project found in repository root."
+
+          elif [ -f "./hesabeman/gradlew" ]; then
+            echo "PROJECT_DIR=./hesabeman" >> "$GITHUB_ENV"
+            echo "Gradle project found in ./hesabeman."
+
+          elif [ -f "./Hesabdar/gradlew" ]; then
+            echo "PROJECT_DIR=./Hesabdar" >> "$GITHUB_ENV"
+            echo "Gradle project found in ./Hesabdar."
+
+          else
+            echo "ERROR: gradlew was not found."
+            echo "The Android project structure is incorrect."
+            exit 1
+          fi
+
+      # 8. مجوز اجرای Gradle
+      - name: Make Gradle executable
+        run: |
+          chmod +x "$PROJECT_DIR/gradlew"
+
+      # 9. بررسی Gradle
       - name: Check Gradle
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ./gradlew --version
 
-      # 8. پاک کردن Build قبلی
+      # 10. پاک‌سازی
       - name: Clean
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ./gradlew clean --stacktrace
 
-      # 9. ساخت APK Debug
+      # 11. ساخت APK
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ./gradlew :app:assembleDebug \
             --stacktrace \
             --info
 
-      # 10. بررسی وجود APK
+      # 12. بررسی APK
       - name: Verify APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
 
@@ -86,8 +118,9 @@ jobs:
           echo "APK generated successfully:"
           ls -lh "$APK"
 
-      # 11. تغییر نام APK
-      - name: Rename APK
+      # 13. تغییر نام APK
+      - name: Prepare APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           mkdir -p artifacts
 
@@ -95,13 +128,11 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk \
             artifacts/hesabdar-2.0.0-debug.apk
 
-          ls -lh artifacts/
-
-      # 12. ذخیره APK به عنوان Artifact
+      # 14. آپلود APK
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: hesabdar-2.0.0-debug
-          path: artifacts/hesabdar-2.0.0-debug.apk
+          path: ${{ env.PROJECT_DIR }}/artifacts/hesabdar-2.0.0-debug.apk
           if-no-files-found: error
           retention-days: 30
