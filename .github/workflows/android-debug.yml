@@ -31,18 +31,46 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+      # پیدا کردن و extract کردن جدیدترین zip سورس در ریشه‌ی ریپو
+      - name: Extract source zip
+        run: |
+          # جدیدترین فایل zip موجود در ریشه‌ی ریپو رو پیدا می‌کنه
+          ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No .zip file found in repo root."
+            exit 1
+          fi
+          echo "Found zip: $ZIP_FILE"
+          mkdir -p extracted
+          unzip -o -q "$ZIP_FILE" -d extracted
+          echo "Extracted contents:"
+          find extracted -maxdepth 2
+
+          # پیدا کردن پوشه‌ای که settings.gradle.kts توش هست
+          SETTINGS_PATH=$(find extracted -maxdepth 3 -name "settings.gradle.kts" | head -n 1)
+          if [ -z "$SETTINGS_PATH" ]; then
+            echo "ERROR: settings.gradle.kts not found inside the zip."
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$SETTINGS_PATH")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory resolved to: $PROJECT_DIR"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
       - name: Clean
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle clean --stacktrace
 
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle :app:assembleDebug --stacktrace --info
 
       - name: Verify APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           if [ ! -f "$APK" ]; then
@@ -53,6 +81,7 @@ jobs:
           ls -lh "$APK"
 
       - name: Prepare APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           mkdir -p artifacts
           cp app/build/outputs/apk/debug/app-debug.apk artifacts/hesabdar-2.0.0-debug.apk
@@ -61,6 +90,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hesabdar-2.0.0-debug
-          path: artifacts/hesabdar-2.0.0-debug.apk
+          path: ${{ env.PROJECT_DIR }}/artifacts/hesabdar-2.0.0-debug.apk
           if-no-files-found: error
           retention-days: 30
