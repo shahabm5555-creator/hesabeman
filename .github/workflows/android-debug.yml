@@ -1,4 +1,4 @@
-name: Hesabdar 2.0.1 Android Debug APK
+name: Build Hesabdar 2.0.2 Debug APK
 
 on:
   push:
@@ -12,35 +12,35 @@ permissions:
 
 jobs:
   build:
-    name: Build Hesabdar 2.0.1
+    name: Build Hesabdar 2.0.2
     runs-on: ubuntu-latest
 
     steps:
 
-      # ==========================================
-      # 1. دریافت Repository
-      # ==========================================
+      # ------------------------------------------
+      # Checkout
+      # ------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ==========================================
-      # 2. نصب Java 17
-      # ==========================================
+      # ------------------------------------------
+      # Java 17
+      # ------------------------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      # ==========================================
-      # 3. نصب Android SDK
-      # ==========================================
+      # ------------------------------------------
+      # Android SDK
+      # ------------------------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ==========================================
-      # 4. نصب Android SDK مورد نیاز
-      # ==========================================
+      # ------------------------------------------
+      # Android SDK packages
+      # ------------------------------------------
       - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses || true
@@ -50,24 +50,25 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # ==========================================
-      # 5. پیدا کردن ZIP
-      # ==========================================
-      - name: Find Hesabdar ZIP
+      # ------------------------------------------
+      # Find ZIP
+      # ------------------------------------------
+      - name: Find Hesabdar Source ZIP
         run: |
           set -e
 
-          ZIP="Hesabdar_android_source_v2_0_1_updated.zip"
+          ZIP="Hesabdar_android_source_v2.0.2_fixed.zip"
 
-          echo "Searching for:"
+          echo "Looking for:"
           echo "$ZIP"
 
           if [ ! -f "$ZIP" ]; then
             echo ""
-            echo "ERROR: Source ZIP was not found."
+            echo "ERROR: ZIP file was not found."
             echo ""
-            echo "Available ZIP files:"
+            echo "ZIP files available in repository:"
             find . -type f -name "*.zip" -print
+
             exit 1
           fi
 
@@ -75,9 +76,9 @@ jobs:
           echo "ZIP FOUND:"
           ls -lh "$ZIP"
 
-      # ==========================================
-      # 6. استخراج سورس
-      # ==========================================
+      # ------------------------------------------
+      # Extract source
+      # ------------------------------------------
       - name: Extract Hesabdar Source
         run: |
           set -e
@@ -86,24 +87,20 @@ jobs:
           mkdir -p project
 
           unzip -o \
-            "Hesabdar_android_source_v2_0_1_updated.zip" \
+            "Hesabdar_android_source_v2.0.2_fixed.zip" \
             -d project
 
           echo ""
           echo "Source extracted successfully."
 
-          echo ""
-          echo "Project files:"
-          find project -maxdepth 4 -type f | sort | head -500
-
-      # ==========================================
-      # 7. پیدا کردن ریشه واقعی پروژه
-      # ==========================================
+      # ------------------------------------------
+      # Locate Android project
+      # ------------------------------------------
       - name: Locate Android Project
         run: |
           set -e
 
-          echo "Searching for Android project..."
+          echo "Searching for settings.gradle..."
 
           SETTINGS=$(find project \
             -type f \
@@ -116,28 +113,32 @@ jobs:
 
           if [ -z "$SETTINGS" ]; then
             echo ""
-            echo "ERROR: settings.gradle(.kts) was not found."
+            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
+            echo ""
+            echo "Project files:"
+            find project -maxdepth 5 -type f | sort
+
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
           echo ""
-          echo "Android project:"
+          echo "Android project found:"
           echo "$PROJECT_DIR"
 
           echo "$PROJECT_DIR" > project_path.txt
 
-      # ==========================================
-      # 8. بررسی ساختار پروژه
-      # ==========================================
+      # ------------------------------------------
+      # Verify Android project
+      # ------------------------------------------
       - name: Verify Android Project
         run: |
           set -e
 
           PROJECT_DIR=$(cat project_path.txt)
 
-          echo "Checking:"
+          echo "Checking project:"
           echo "$PROJECT_DIR"
 
           if [ -f "$PROJECT_DIR/settings.gradle.kts" ]; then
@@ -163,8 +164,11 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ] &&
-             [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+          if [ -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "app/build.gradle.kts: OK"
+          elif [ -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "app/build.gradle: OK"
+          else
             echo "ERROR: app build.gradle file not found."
             exit 1
           fi
@@ -172,39 +176,25 @@ jobs:
           echo ""
           echo "Android project structure is valid."
 
-      # ==========================================
-      # 9. نصب Gradle 8.9
-      # ==========================================
+      # ------------------------------------------
+      # Gradle 8.9
+      # ------------------------------------------
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      # ==========================================
-      # 10. بررسی Gradle
-      # ==========================================
+      # ------------------------------------------
+      # Check Gradle
+      # ------------------------------------------
       - name: Check Gradle
         run: |
           gradle --version
 
-      # ==========================================
-      # 11. Clean
-      # ==========================================
-      - name: Clean Project
-        run: |
-          set -e
-
-          PROJECT_DIR=$(cat project_path.txt)
-
-          cd "$PROJECT_DIR"
-
-          gradle clean \
-            --stacktrace
-
-      # ==========================================
-      # 12. Build APK
-      # ==========================================
-      - name: Build Hesabdar 2.0.1 Debug APK
+      # ------------------------------------------
+      # Build Debug APK
+      # ------------------------------------------
+      - name: Build Debug APK
         run: |
           set -e
 
@@ -213,20 +203,22 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo ""
-          echo "=========================================="
-          echo "Building Hesabdar 2.0.1"
-          echo "Gradle: 8.9"
+          echo "======================================"
+          echo "Hesabdar 2.0.2 Debug Build"
+          echo "======================================"
           echo "Java: 17"
+          echo "Gradle: 8.9"
           echo "Android SDK: 35"
-          echo "=========================================="
+          echo "======================================"
           echo ""
 
           gradle :app:assembleDebug \
-            --stacktrace
+            --stacktrace \
+            --no-daemon
 
-      # ==========================================
-      # 13. بررسی APK
-      # ==========================================
+      # ------------------------------------------
+      # Verify APK
+      # ------------------------------------------
       - name: Verify APK
         run: |
           set -e
@@ -239,7 +231,7 @@ jobs:
             echo ""
             echo "ERROR: APK was not generated."
             echo ""
-            echo "Available build outputs:"
+            echo "Available outputs:"
             find "$PROJECT_DIR/app/build/outputs" \
               -type f \
               -print 2>/dev/null || true
@@ -248,16 +240,16 @@ jobs:
           fi
 
           echo ""
-          echo "=========================================="
+          echo "======================================"
           echo "BUILD SUCCESSFUL"
-          echo "=========================================="
+          echo "======================================"
           echo ""
 
           ls -lh "$APK"
 
-      # ==========================================
-      # 14. آماده کردن APK
-      # ==========================================
+      # ------------------------------------------
+      # Rename APK
+      # ------------------------------------------
       - name: Prepare APK
         run: |
           set -e
@@ -269,19 +261,19 @@ jobs:
 
           cp \
             "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" \
-            "output/hesabdar-2.0.1-debug.apk"
+            "output/hesabdar-2.0.2-debug.apk"
 
           echo ""
-          echo "APK ready:"
-          ls -lh output/hesabdar-2.0.1-debug.apk
+          echo "Final APK:"
+          ls -lh output/hesabdar-2.0.2-debug.apk
 
-      # ==========================================
-      # 15. آپلود APK
-      # ==========================================
+      # ------------------------------------------
+      # Upload APK
+      # ------------------------------------------
       - name: Upload Hesabdar APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabdar-2.0.1-debug
-          path: output/hesabdar-2.0.1-debug.apk
+          name: hesabdar-2.0.2-debug
+          path: output/hesabdar-2.0.2-debug.apk
           if-no-files-found: error
           retention-days: 30
