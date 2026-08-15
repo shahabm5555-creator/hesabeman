@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
@@ -11,35 +12,35 @@ permissions:
 
 jobs:
   build:
-    name: Build Hesabdar 2.0.1 Debug APK
+    name: Build Hesabdar 2.0.1
     runs-on: ubuntu-latest
 
     steps:
 
-      # --------------------------------------------------
+      # ----------------------------------------
       # 1. دریافت Repository
-      # --------------------------------------------------
+      # ----------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --------------------------------------------------
-      # 2. نصب Java 17
-      # --------------------------------------------------
+      # ----------------------------------------
+      # 2. Java 17
+      # ----------------------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      # --------------------------------------------------
-      # 3. نصب Android SDK
-      # --------------------------------------------------
+      # ----------------------------------------
+      # 3. Android SDK
+      # ----------------------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # --------------------------------------------------
-      # 4. نصب SDK مورد نیاز
-      # --------------------------------------------------
+      # ----------------------------------------
+      # 4. نصب Android SDK
+      # ----------------------------------------
       - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses || true
@@ -49,35 +50,36 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # --------------------------------------------------
-      # 5. بررسی وجود ZIP نسخه 2.0.1
-      # --------------------------------------------------
-      - name: Check Hesabdar ZIP
+      # ----------------------------------------
+      # 5. پیدا کردن ZIP نسخه 2.0.1
+      # ----------------------------------------
+      - name: Find Hesabdar ZIP
         run: |
-          set -e
+          echo "Checking repository..."
 
-          ZIP_FILE="Hesabdar_android_source_v2.0.1.zip"
+          ls -la
 
-          echo "Looking for:"
-          echo "$ZIP_FILE"
+          ZIP="Hesabdar_android_source_v2.0.1.zip"
 
-          if [ ! -f "$ZIP_FILE" ]; then
+          if [ ! -f "$ZIP" ]; then
             echo ""
-            echo "ERROR: Hesabdar_android_source_v2.0.1.zip was not found."
+            echo "ERROR:"
+            echo "$ZIP"
+            echo "was not found."
             echo ""
-            echo "Files available in repository:"
-            find . -maxdepth 3 -type f | sort
+            echo "ZIP files found:"
+            find . -type f -name "*.zip" -print
             exit 1
           fi
 
           echo ""
-          echo "ZIP found successfully:"
-          ls -lh "$ZIP_FILE"
+          echo "ZIP FOUND:"
+          ls -lh "$ZIP"
 
-      # --------------------------------------------------
-      # 6. استخراج سورس
-      # --------------------------------------------------
-      - name: Extract Hesabdar Source
+      # ----------------------------------------
+      # 6. استخراج ZIP
+      # ----------------------------------------
+      - name: Extract Source
         run: |
           set -e
 
@@ -89,16 +91,15 @@ jobs:
             -d project
 
           echo ""
-          echo "ZIP extracted successfully."
-
+          echo "SOURCE EXTRACTED"
           echo ""
-          echo "Extracted files:"
+
           find project -maxdepth 4 -type f | sort | head -500
 
-      # --------------------------------------------------
+      # ----------------------------------------
       # 7. پیدا کردن Gradle Wrapper
-      # --------------------------------------------------
-      - name: Locate Android Gradle Project
+      # ----------------------------------------
+      - name: Find Gradle Project
         run: |
           set -e
 
@@ -111,42 +112,48 @@ jobs:
 
           if [ -z "$GRADLEW" ]; then
             echo ""
-            echo "ERROR: gradlew was not found inside the ZIP."
+            echo "ERROR: gradlew not found."
             echo ""
-            echo "Project structure:"
-            find project -maxdepth 6 -type f | sort
+            echo "Files inside ZIP:"
+            find project -maxdepth 7 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$GRADLEW")
 
           echo ""
-          echo "Gradle Wrapper:"
+          echo "Gradle wrapper:"
           echo "$GRADLEW"
 
           echo ""
-          echo "Android Project Directory:"
+          echo "Project directory:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "$PROJECT_DIR" > project_path.txt
 
-      # --------------------------------------------------
-      # 8. بررسی فایل های اصلی پروژه
-      # --------------------------------------------------
-      - name: Verify Android Project
+      # ----------------------------------------
+      # 8. بررسی ساختار Android
+      # ----------------------------------------
+      - name: Verify Project
         run: |
           set -e
 
-          echo "Checking Android project..."
+          PROJECT_DIR=$(cat project_path.txt)
 
-          test -f "$PROJECT_DIR/gradlew"
+          echo "Checking:"
+          echo "$PROJECT_DIR"
+
+          if [ ! -f "$PROJECT_DIR/gradlew" ]; then
+            echo "ERROR: gradlew missing."
+            exit 1
+          fi
 
           if [ -f "$PROJECT_DIR/settings.gradle" ]; then
             echo "settings.gradle found."
           elif [ -f "$PROJECT_DIR/settings.gradle.kts" ]; then
             echo "settings.gradle.kts found."
           else
-            echo "ERROR: settings.gradle was not found."
+            echo "ERROR: settings.gradle not found."
             exit 1
           fi
 
@@ -155,103 +162,127 @@ jobs:
           elif [ -f "$PROJECT_DIR/build.gradle.kts" ]; then
             echo "build.gradle.kts found."
           else
-            echo "ERROR: build.gradle was not found."
+            echo "ERROR: build.gradle not found."
             exit 1
           fi
 
-          test -d "$PROJECT_DIR/app"
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: app folder not found."
+            exit 1
+          fi
 
           echo ""
-          echo "Android project structure is OK."
+          echo "Android project structure OK."
 
-      # --------------------------------------------------
+      # ----------------------------------------
       # 9. فعال کردن Gradle Wrapper
-      # --------------------------------------------------
-      - name: Prepare Gradle Wrapper
+      # ----------------------------------------
+      - name: Prepare Gradle
         run: |
-          set -e
+          PROJECT_DIR=$(cat project_path.txt)
 
           chmod +x "$PROJECT_DIR/gradlew"
 
-          echo "Gradle Wrapper is executable."
+          echo "Gradle wrapper is executable."
 
-      # --------------------------------------------------
-      # 10. بررسی نسخه Gradle
-      # --------------------------------------------------
+      # ----------------------------------------
+      # 10. بررسی Gradle
+      # ----------------------------------------
       - name: Check Gradle
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          ./gradlew --version
-
-      # --------------------------------------------------
-      # 11. پاک کردن Build قبلی
-      # --------------------------------------------------
-      - name: Clean Project
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          ./gradlew clean \
-            --stacktrace
-
-      # --------------------------------------------------
-      # 12. ساخت APK Debug
-      # --------------------------------------------------
-      - name: Build Hesabdar 2.0.1 Debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          ./gradlew :app:assembleDebug \
-            --stacktrace \
-            --info
-
-      # --------------------------------------------------
-      # 13. بررسی APK
-      # --------------------------------------------------
-      - name: Verify APK
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
 
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          PROJECT_DIR=$(cat project_path.txt)
+
+          cd "$PROJECT_DIR"
+
+          ./gradlew --version
+
+      # ----------------------------------------
+      # 11. Clean
+      # ----------------------------------------
+      - name: Clean Project
+        run: |
+          set -e
+
+          PROJECT_DIR=$(cat project_path.txt)
+
+          cd "$PROJECT_DIR"
+
+          ./gradlew clean --stacktrace
+
+      # ----------------------------------------
+      # 12. Build APK
+      # ----------------------------------------
+      - name: Build Debug APK
+        run: |
+          set -e
+
+          PROJECT_DIR=$(cat project_path.txt)
+
+          cd "$PROJECT_DIR"
+
+          echo "Building Hesabdar 2.0.1..."
+
+          ./gradlew :app:assembleDebug \
+            --stacktrace
+
+      # ----------------------------------------
+      # 13. بررسی APK
+      # ----------------------------------------
+      - name: Verify APK
+        run: |
+          set -e
+
+          PROJECT_DIR=$(cat project_path.txt)
+
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
             echo ""
             echo "ERROR: APK was not generated."
             echo ""
-            echo "APK directory:"
-            find app/build/outputs -type f 2>/dev/null || true
+            echo "Available output files:"
+            find "$PROJECT_DIR/app/build/outputs" \
+              -type f \
+              -print 2>/dev/null || true
+
             exit 1
           fi
 
           echo ""
-          echo "======================================"
-          echo "Hesabdar 2.0.1 APK generated"
-          echo "======================================"
+          echo "===================================="
+          echo "BUILD SUCCESSFUL"
+          echo "===================================="
 
           ls -lh "$APK"
 
-      # --------------------------------------------------
-      # 14. تغییر نام APK
-      # --------------------------------------------------
-      - name: Prepare APK Artifact
-        working-directory: ${{ env.PROJECT_DIR }}
+      # ----------------------------------------
+      # 14. آماده کردن APK
+      # ----------------------------------------
+      - name: Prepare APK
         run: |
           set -e
 
-          mkdir -p artifacts
+          PROJECT_DIR=$(cat project_path.txt)
+
+          mkdir -p output
 
           cp \
-            app/build/outputs/apk/debug/app-debug.apk \
-            artifacts/hesabdar-2.0.1-debug.apk
+            "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" \
+            "output/hesabdar-2.0.1-debug.apk"
 
-          echo "Artifact prepared:"
-          ls -lh artifacts/hesabdar-2.0.1-debug.apk
+          echo ""
+          echo "APK:"
+          ls -lh output/hesabdar-2.0.1-debug.apk
 
-      # --------------------------------------------------
+      # ----------------------------------------
       # 15. آپلود APK
-      # --------------------------------------------------
-      - name: Upload Hesabdar APK
+      # ----------------------------------------
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: hesabdar-2.0.1-debug
-          path: ${{ env.PROJECT_DIR }}/artifacts/hesabdar-2.0.1-debug.apk
+          path: output/hesabdar-2.0.1-debug.apk
           if-no-files-found: error
           retention-days: 30
