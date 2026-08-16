@@ -29,11 +29,18 @@ jobs:
 
       - name: Install Android SDK Packages
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          set -e
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          SDKMANAGER=$(find "$ANDROID_SDK_ROOT" -name "sdkmanager" -type f | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager binary not found under \$ANDROID_SDK_ROOT"
+            find "$ANDROID_SDK_ROOT" -maxdepth 4
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMANAGER" --list_installed
 
       - name: Find Source ZIP
         run: |
@@ -82,10 +89,22 @@ jobs:
           echo "GRADLE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Gradle version: $VERSION"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$PROJECT_DIR/local.properties"
+
+      # Downloaded directly instead of via gradle/actions/setup-gradle, which routes
+      # through GitHub's Actions cache backend — that backend occasionally times out
+      # ("Restore Gradle distribution ... RestError: Operation could not be completed
+      # within the specified time"). A plain wget avoids that dependency entirely.
+      - name: Install Gradle ${{ env.GRADLE_VERSION }}
+        run: |
+          set -e
+          curl -fsSL -o gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          unzip -q gradle.zip -d "$HOME/gradle-dist"
+          echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Gradle
+        run: gradle --version
 
       - name: Clean
         working-directory: ${{ env.PROJECT_DIR }}
