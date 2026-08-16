@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Hesabdar 2.0.4 Debug APK
+    name: Build Hesabdar 2.0.5 Debug APK
     runs-on: ubuntu-latest
 
     steps:
