@@ -57,7 +57,7 @@ jobs:
         run: |
           set -e
 
-          ZIP="Hesabdar_android_source_v2.0.2_fixed.zip"
+          ZIP="Hesabdar_android_source_v2_0_2_fixes.zip"
 
           echo "Looking for:"
           echo "$ZIP"
