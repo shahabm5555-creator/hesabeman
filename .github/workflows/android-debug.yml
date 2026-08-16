@@ -1,4 +1,4 @@
-name: Hesabdar Android Debug APK
+name: Build Hesabdar 2.0.3 Debug APK
 
 on:
   push:
@@ -11,126 +11,276 @@ permissions:
 
 jobs:
   build:
-    name: Build Hesabdar Debug APK
+    name: Build Hesabdar 2.0.3
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # Java 17
+      # -----------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
+      # -----------------------------
+      # Android SDK
+      # -----------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK Packages
+      - name: Install Android SDK
         run: |
-          set -e
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          # There can be two sdkmanager binaries under the SDK root: a legacy one at
-          # tools/bin/sdkmanager (incompatible with JDK 11+, throws NoClassDefFoundError
-          # for javax.xml.bind) and the current one under cmdline-tools. Target the
-          # cmdline-tools one explicitly instead of grabbing whichever `find` returns first.
-          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -n 1)
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_SDK_ROOT" -path "*/cmdline-tools/*" -name "sdkmanager" -type f | head -n 1)
-          fi
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: cmdline-tools sdkmanager binary not found under \$ANDROID_SDK_ROOT"
-            find "$ANDROID_SDK_ROOT" -maxdepth 4
-            exit 1
-          fi
-          echo "Using sdkmanager: $SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-          "$SDKMANAGER" --list_installed
+          yes | sdkmanager --licenses || true
 
-      - name: Find Source ZIP
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      # -----------------------------
+      # Find ZIP
+      # -----------------------------
+      - name: Find Hesabdar Source ZIP
         run: |
           set -e
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
+
+          ZIP_FILE=$(find . -maxdepth 3 -type f \
+            -iname "Hesabdar_android_source_v2.0.2_fixed2.zip" \
+            | head -n 1)
+
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No Android source ZIP found."
-            find . -maxdepth 3 -type f | sort
+            echo "ERROR: Hesabdar source ZIP was not found."
+            echo ""
+            echo "Available ZIP files:"
+            find . -type f -name "*.zip" -print
             exit 1
           fi
-          echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
-          echo "Using: $ZIP_FILE"
 
+          echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
+
+          echo ""
+          echo "Source ZIP:"
+          echo "$ZIP_FILE"
+          ls -lh "$ZIP_FILE"
+
+      # -----------------------------
+      # Extract ZIP
+      # -----------------------------
       - name: Extract Android Source
         run: |
           set -e
+
           rm -rf project
           mkdir -p project
-          unzip -o "$SOURCE_ZIP" -d project
-          find project -maxdepth 3 -type f | sort | head -300
 
+          unzip -o "$SOURCE_ZIP" -d project
+
+          echo ""
+          echo "Source extracted."
+
+      # -----------------------------
+      # Find Android project
+      # -----------------------------
       - name: Locate Android Project
         run: |
           set -e
-          SETTINGS=$(find project -maxdepth 3 -type f -name "settings.gradle*" | head -n 1)
+
+          SETTINGS=$(find project -type f \
+            \( \
+              -name "settings.gradle.kts" \
+              -o \
+              -name "settings.gradle" \
+            \) \
+            | head -n 1)
+
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle(.kts) was not found inside the ZIP."
-            find project -maxdepth 5 -type f | sort
+            echo "ERROR: settings.gradle(.kts) not found."
             exit 1
           fi
+
           PROJECT_DIR=$(dirname "$SETTINGS")
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Project: $PROJECT_DIR"
 
-      # This source has no gradlew/gradlew.bat/gradle-wrapper.jar checked in, only
-      # gradle/wrapper/gradle-wrapper.properties. So instead of relying on ./gradlew,
-      # we install the exact Gradle version it points to and invoke `gradle` directly.
-      - name: Read Required Gradle Version
+          echo ""
+          echo "Android project:"
+          echo "$PROJECT_DIR"
+
+      # -----------------------------
+      # Verify project
+      # -----------------------------
+      - name: Verify Android Project
         run: |
           set -e
-          PROPS="$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
-          if [ -f "$PROPS" ]; then
-            VERSION=$(grep -oP 'gradle-\K[0-9.]+(?=-bin\.zip|-all\.zip)' "$PROPS")
-          fi
-          VERSION="${VERSION:-8.9}"
-          echo "GRADLE_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Gradle version: $VERSION"
 
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$PROJECT_DIR/local.properties"
+          echo "Checking Android project..."
 
-      # Downloaded directly instead of via gradle/actions/setup-gradle, which routes
-      # through GitHub's Actions cache backend — that backend occasionally times out
-      # ("Restore Gradle distribution ... RestError: Operation could not be completed
-      # within the specified time"). A plain wget avoids that dependency entirely.
-      - name: Install Gradle ${{ env.GRADLE_VERSION }}
+          test -f "$PROJECT_DIR/settings.gradle.kts" \
+            || test -f "$PROJECT_DIR/settings.gradle"
+
+          test -f "$PROJECT_DIR/build.gradle.kts" \
+            || test -f "$PROJECT_DIR/build.gradle"
+
+          test -d "$PROJECT_DIR/app"
+
+          test -f "$PROJECT_DIR/app/build.gradle.kts" \
+            || test -f "$PROJECT_DIR/app/build.gradle"
+
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+
+          test -f "$PROJECT_DIR/app/test-signing.jks"
+
+          echo ""
+          echo "Android project structure: OK"
+
+      # -----------------------------
+      # Setup Gradle 8.9
+      # -----------------------------
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # -----------------------------
+      # Check Gradle
+      # -----------------------------
+      - name: Check Build Environment
         run: |
-          set -e
-          curl -fsSL -o gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
-          unzip -q gradle.zip -d "$HOME/gradle-dist"
-          echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "Java:"
+          java -version
 
-      - name: Verify Gradle
-        run: gradle --version
+          echo ""
+          echo "Gradle:"
+          gradle --version
 
-      - name: Clean
+          echo ""
+          echo "Android SDK:"
+          sdkmanager --list_installed | grep -E \
+            "platforms;android-35|build-tools;35.0.0|platform-tools" \
+            || true
+
+      # -----------------------------
+      # Force version 2.0.3
+      # -----------------------------
+      - name: Set Release Test Version
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle clean --stacktrace
+        run: |
+          set -e
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/build.gradle.kts")
+          text = p.read_text(encoding="utf-8")
+
+          text = text.replace(
+              'versionCode = 202',
+              'versionCode = 203'
+          )
+
+          text = text.replace(
+              'versionName = "2.0.2"',
+              'versionName = "2.0.3"'
+          )
+
+          p.write_text(text, encoding="utf-8")
+
+          print("versionCode = 203")
+          print('versionName = "2.0.3"')
+          PY
+
+          grep -E "versionCode|versionName|applicationId" \
+            app/build.gradle.kts
+
+      # -----------------------------
+      # Clean
+      # -----------------------------
+      - name: Clean Project
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          gradle clean \
+            --stacktrace \
+            --no-daemon
+
+      # -----------------------------
+      # Build Debug APK
+      # -----------------------------
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle :app:assembleDebug --stacktrace --info
+        run: |
+          set -e
 
+          gradle :app:assembleDebug \
+            --stacktrace \
+            --no-daemon
+
+      # -----------------------------
+      # Verify APK
+      # -----------------------------
       - name: Verify APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          set -e
 
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not generated."
+            find app/build/outputs \
+              -type f \
+              -print || true
+            exit 1
+          fi
+
+          echo ""
+          echo "APK generated successfully:"
+          ls -lh "$APK"
+
+      # -----------------------------
+      # Check APK package
+      # -----------------------------
+      - name: Verify APK Package
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          echo "APK information:"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" \
+            | grep -E \
+            "package:|application-label:|launchable-activity:"
+
+      # -----------------------------
+      # Prepare output
+      # -----------------------------
+      - name: Prepare APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          rm -rf output
+          mkdir -p output
+
+          cp \
+            app/build/outputs/apk/debug/app-debug.apk \
+            output/hesabdar-2.0.3-debug.apk
+
+          ls -lh output/hesabdar-2.0.3-debug.apk
+
+      # -----------------------------
+      # Upload APK
+      # -----------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabdar-debug
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          name: hesabdar-2.0.3-debug
+          path: ${{ env.PROJECT_DIR }}/output/hesabdar-2.0.3-debug.apk
           if-no-files-found: error
           retention-days: 30
