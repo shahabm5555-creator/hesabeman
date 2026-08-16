@@ -31,18 +31,12 @@ jobs:
         run: |
           set -e
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          # There can be two sdkmanager binaries under the SDK root: a legacy one at
-          # tools/bin/sdkmanager (incompatible with JDK 11+, throws NoClassDefFoundError
-          # for javax.xml.bind) and the current one under cmdline-tools. Target the
-          # cmdline-tools one explicitly instead of grabbing whichever `find` returns first.
           SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -n 1)
           if [ -z "$SDKMANAGER" ]; then
             SDKMANAGER=$(find "$ANDROID_SDK_ROOT" -path "*/cmdline-tools/*" -name "sdkmanager" -type f | head -n 1)
           fi
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: cmdline-tools sdkmanager binary not found under \$ANDROID_SDK_ROOT"
-            find "$ANDROID_SDK_ROOT" -maxdepth 4
-            exit 1
+            echo "ERROR: sdkmanager not found"; find "$ANDROID_SDK_ROOT" -maxdepth 4; exit 1
           fi
           echo "Using sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses
@@ -52,11 +46,12 @@ jobs:
       - name: Find Source ZIP
         run: |
           set -e
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "Hesabdar_android_source_v2_0_8.zip" | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No Android source ZIP found."
-            find . -maxdepth 3 -type f | sort
-            exit 1
+            ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
+          fi
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No source ZIP found."; find . -maxdepth 3 -type f | sort; exit 1
           fi
           echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
           echo "Using: $ZIP_FILE"
@@ -64,33 +59,28 @@ jobs:
       - name: Extract Android Source
         run: |
           set -e
-          rm -rf project
-          mkdir -p project
+          rm -rf project && mkdir -p project
           unzip -o "$SOURCE_ZIP" -d project
-          find project -maxdepth 3 -type f | sort | head -300
+          find project -maxdepth 3 -type f | sort | head -200
 
       - name: Locate Android Project
         run: |
           set -e
           SETTINGS=$(find project -maxdepth 3 -type f -name "settings.gradle*" | head -n 1)
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle(.kts) was not found inside the ZIP."
-            find project -maxdepth 5 -type f | sort
-            exit 1
+            echo "ERROR: settings.gradle(.kts) not found"; find project -maxdepth 5 -type f | sort; exit 1
           fi
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Project: $PROJECT_DIR"
 
-      # This source has no gradlew/gradlew.bat/gradle-wrapper.jar checked in, only
-      # gradle/wrapper/gradle-wrapper.properties. So instead of relying on ./gradlew,
-      # we install the exact Gradle version it points to and invoke `gradle` directly.
       - name: Read Required Gradle Version
         run: |
           set -e
           PROPS="$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
+          VERSION=""
           if [ -f "$PROPS" ]; then
-            VERSION=$(grep -oP 'gradle-\K[0-9.]+(?=-bin\.zip|-all\.zip)' "$PROPS")
+            VERSION=$(grep -oP 'gradle-\K[0-9.]+(?=-bin\.zip|-all\.zip)' "$PROPS" || true)
           fi
           VERSION="${VERSION:-8.9}"
           echo "GRADLE_VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -99,10 +89,6 @@ jobs:
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$PROJECT_DIR/local.properties"
 
-      # Downloaded directly instead of via gradle/actions/setup-gradle, which routes
-      # through GitHub's Actions cache backend — that backend occasionally times out
-      # ("Restore Gradle distribution ... RestError: Operation could not be completed
-      # within the specified time"). A plain wget avoids that dependency entirely.
       - name: Install Gradle ${{ env.GRADLE_VERSION }}
         run: |
           set -e
@@ -119,7 +105,7 @@ jobs:
 
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle :app:assembleDebug --stacktrace --info
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Verify APK
         working-directory: ${{ env.PROJECT_DIR }}
