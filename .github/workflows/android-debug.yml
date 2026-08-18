@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Hesabdar 2.1.4 Debug APK
+    name: Build Hesabdar 2.1.5 Debug APK
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +41,7 @@ jobs:
       - name: Find Source ZIP
         run: |
           set -e
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "Hesabdar_android_source_v2_1_4.zip" | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "Hesabdar_android_source_v2_1_5.zip" | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
             ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
           fi
@@ -104,7 +104,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabdar-2.1.4-debug
+          name: hesabdar-2.1.5-debug
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
