@@ -220,9 +220,9 @@ jobs:
 
         with:
 
-          name: Hesabdar_v3.0.0_APK
+          name: Hesabdar_shakhsi_v1.0.0_APK
 
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/Hesabdar_v3.0.0.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/Hesabdar_shakhsi_v1.0.apk
 
           if-no-files-found: error
 
