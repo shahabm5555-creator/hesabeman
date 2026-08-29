@@ -1,4 +1,4 @@
-name: Hesabdar Android Debug APK
+name: Hesabdar Android APK Build
 
 on:
   push:
@@ -10,13 +10,17 @@ permissions:
   contents: read
 
 jobs:
+
   build:
-    name: Build Hesabdar 2.1.5 Debug APK
+
+    name: Build Hesabdar APK
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Setup JDK 17
         uses: actions/setup-java@v5
@@ -24,87 +28,202 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
 
       - name: Install Android SDK Packages
         run: |
           set -e
-          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name "sdkmanager" -type f 2>/dev/null | head -n 1)
+
+          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1)
+
           if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_SDK_ROOT" -path "*/cmdline-tools/*" -name "sdkmanager" -type f | head -n 1)
+            SDKMANAGER=$(find "$ANDROID_SDK_ROOT" -name sdkmanager -type f | head -n 1)
           fi
-          if [ -z "$SDKMANAGER" ]; then echo "ERROR: sdkmanager not found"; exit 1; fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found"
+            exit 1
+          fi
+
           yes | "$SDKMANAGER" --licenses
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+          "$SDKMANAGER" \
+          "platform-tools" \
+          "platforms;android-35" \
+          "build-tools;35.0.0"
+
+
 
       - name: Find Source ZIP
         run: |
           set -e
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "Hesabdar_android_source_v2_1_5.zip" | head -n 1)
-          if [ -z "$ZIP_FILE" ]; then
-            ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
-          fi
-          if [ -z "$ZIP_FILE" ]; then echo "ERROR: No source ZIP found"; exit 1; fi
-          echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
-          echo "Using: $ZIP_FILE"
 
-      - name: Extract Android Source
+          ZIP_FILE=$(find . -maxdepth 3 \
+          -type f \
+          -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Source ZIP not found"
+            exit 1
+          fi
+
+          echo "SOURCE_ZIP=$ZIP_FILE" >> $GITHUB_ENV
+
+          echo "Using source:"
+          echo "$ZIP_FILE"
+
+
+
+      - name: Extract Source
         run: |
+
           set -e
-          rm -rf project && mkdir -p project
+
+          rm -rf project
+
+          mkdir project
+
           unzip -o "$SOURCE_ZIP" -d project
+
+
 
       - name: Locate Android Project
         run: |
-          set -e
-          SETTINGS=$(find project -maxdepth 3 -type f -name "settings.gradle*" | head -n 1)
-          if [ -z "$SETTINGS" ]; then echo "ERROR: settings.gradle not found"; exit 1; fi
-          PROJECT_DIR=$(dirname "$SETTINGS")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Project: $PROJECT_DIR"
 
-      - name: Read Required Gradle Version
-        run: |
-          PROPS="$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
-          VERSION=""
-          if [ -f "$PROPS" ]; then
-            VERSION=$(grep -oP 'gradle-\K[0-9.]+(?=-bin\.zip|-all\.zip)' "$PROPS" || true)
+          set -e
+
+          SETTINGS=$(find project \
+          -maxdepth 4 \
+          -type f \
+          -name "settings.gradle*" | head -n 1)
+
+
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle not found"
+            exit 1
           fi
-          VERSION="${VERSION:-8.9}"
-          echo "GRADLE_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Gradle version: $VERSION"
 
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > "$PROJECT_DIR/local.properties"
 
-      - name: Install Gradle ${{ env.GRADLE_VERSION }}
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          echo "Android project:"
+          echo "$PROJECT_DIR"
+
+
+
+      - name: Create local.properties
         run: |
+
+          echo "sdk.dir=$ANDROID_SDK_ROOT" \
+          > "$PROJECT_DIR/local.properties"
+
+
+
+      - name: Install Gradle
+
+        run: |
+
           set -e
-          curl -fsSL -o gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
-          unzip -q gradle.zip -d "$HOME/gradle-dist"
-          echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+          curl -fsSL \
+          -o gradle.zip \
+          https://services.gradle.org/distributions/gradle-8.9-bin.zip
+
+
+          unzip -q gradle.zip \
+          -d $HOME/gradle-dist
+
+
+          echo "$HOME/gradle-dist/gradle-8.9/bin" \
+          >> $GITHUB_PATH
+
+
 
       - name: Verify Gradle
-        run: gradle --version
 
-      - name: Clean
+        run: |
+
+          gradle --version
+
+
+
+      - name: Clean Project
+
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle clean --stacktrace
+
+        run: |
+
+          gradle clean --stacktrace
+
+
 
       - name: Build Debug APK
+
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle :app:assembleDebug --stacktrace
+
+        run: |
+
+          gradle :app:assembleDebug --stacktrace
+
+
+
+      - name: Rename APK
+
+        run: |
+
+          set -e
+
+
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+
+          NEW_APK="$PROJECT_DIR/app/build/outputs/apk/debug/Hesabdar_v3.0.0.apk"
+
+
+          if [ ! -f "$APK" ]; then
+
+            echo "APK file not found"
+
+            exit 1
+
+          fi
+
+
+          mv "$APK" "$NEW_APK"
+
+
+          echo "APK renamed:"
+          echo "$NEW_APK"
+
+
 
       - name: Verify APK
-        run: |
-          test -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-          ls -lh "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-      - name: Upload APK
+        run: |
+
+          test -f "$PROJECT_DIR/app/build/outputs/apk/debug/Hesabdar_v3.0.0.apk"
+
+
+          ls -lh \
+          "$PROJECT_DIR/app/build/outputs/apk/debug/Hesabdar_v3.0.0.apk"
+
+
+
+      - name: Upload Hesabdar APK
+
         uses: actions/upload-artifact@v4
+
         with:
-          name: hesabdar-2.1.5-debug
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+
+          name: Hesabdar_v3.0.0_APK
+
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/Hesabdar_v3.0.0.apk
+
           if-no-files-found: error
+
           retention-days: 30
