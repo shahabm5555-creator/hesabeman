@@ -17,16 +17,16 @@ jobs:
 
     steps:
 
-      # ==================================================
-      # 1. Checkout Repository
-      # ==================================================
-      - name: Checkout repository
+      # ============================================================
+      # 1. Checkout
+      # ============================================================
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
 
-      # ==================================================
-      # 2. Setup JDK 17
-      # ==================================================
+      # ============================================================
+      # 2. Java 17
+      # ============================================================
       - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
@@ -34,36 +34,53 @@ jobs:
           java-version: "17"
 
 
-      # ==================================================
-      # 3. Setup Android SDK
-      # ==================================================
+      # ============================================================
+      # 3. Android SDK
+      # ============================================================
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
 
-      # ==================================================
-      # 4. Install Android SDK
-      # ==================================================
-      - name: Install Android SDK packages
+      # ============================================================
+      # 4. Install Android SDK packages
+      # ============================================================
+      - name: Install Android SDK Packages
+        shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "Installing Android SDK"
+          echo "Installing Android SDK packages"
           echo "======================================"
 
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          SDKMANAGER=$(find "$ANDROID_SDK_ROOT/cmdline-tools" \
+            -name "sdkmanager" \
+            -type f 2>/dev/null | head -n 1)
 
-          sdkmanager \
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_SDK_ROOT" \
+              -path "*/cmdline-tools/*" \
+              -name "sdkmanager" \
+              -type f 2>/dev/null | head -n 1)
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
 
-      # ==================================================
-      # 5. Find Source ZIP
-      # ==================================================
-      - name: Find Hesabdar source ZIP
+      # ============================================================
+      # 5. Find source ZIP
+      # ============================================================
+      - name: Find Hesabdar Source ZIP
         shell: bash
         run: |
           set -e
@@ -72,29 +89,27 @@ jobs:
           echo "Searching for Hesabdar source ZIP"
           echo "======================================"
 
+          ZIP_FILE=""
+
           ZIP_FILE=$(find . \
-            -maxdepth 3 \
+            -maxdepth 2 \
             -type f \
             -iname "Hesabdar_Personal_v1.0.0_Stable.zip" \
-            -print -quit)
+            | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "Exact ZIP not found. Searching for any ZIP..."
-
             ZIP_FILE=$(find . \
-              -maxdepth 3 \
+              -maxdepth 2 \
               -type f \
               -iname "*.zip" \
-              -print -quit)
+              | head -n 1)
           fi
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: Source ZIP was not found."
-
+            echo "ERROR: No Android source ZIP found."
             echo ""
-            echo "Repository files:"
-            find . -maxdepth 4 -type f | sort
-
+            echo "Repository structure:"
+            find . -maxdepth 3 -type f | sort
             exit 1
           fi
 
@@ -104,10 +119,10 @@ jobs:
           echo "SOURCE_ZIP=$ZIP_FILE" >> "$GITHUB_ENV"
 
 
-      # ==================================================
-      # 6. Extract Source
-      # ==================================================
-      - name: Extract Android source
+      # ============================================================
+      # 6. Extract source
+      # ============================================================
+      - name: Extract Android Source
         shell: bash
         run: |
           set -e
@@ -117,20 +132,19 @@ jobs:
           echo "======================================"
 
           rm -rf project
-
           mkdir -p project
 
           unzip -o "$SOURCE_ZIP" -d project
 
           echo ""
           echo "Extracted files:"
-          find project -maxdepth 3 -type f | sort | head -300
+          find project -maxdepth 3 -type f | sort | head -200
 
 
-      # ==================================================
-      # 7. Locate Android Project
-      # ==================================================
-      - name: Locate Android project
+      # ============================================================
+      # 7. Locate Android project
+      # ============================================================
+      - name: Locate Android Project
         shell: bash
         run: |
           set -e
@@ -139,132 +153,147 @@ jobs:
           echo "Searching for Android project"
           echo "======================================"
 
-          SETTINGS_FILE=$(find project \
+          SETTINGS=$(find project \
             -type f \
-            \( \
-              -name "settings.gradle" \
-              -o \
-              -name "settings.gradle.kts" \
-            \) \
-            -print -quit)
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            | head -n 1)
 
-          if [ -z "$SETTINGS_FILE" ]; then
+          if [ -z "$SETTINGS" ]; then
             echo "ERROR: settings.gradle(.kts) was not found."
-
             echo ""
-            echo "Extracted project structure:"
-            find project -maxdepth 6 -type f | sort
-
+            echo "Repository structure:"
+            find project -maxdepth 5 -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          PROJECT_DIR=$(realpath "$PROJECT_DIR")
+          echo "Gradle settings:"
+          echo "$SETTINGS"
 
-          echo ""
           echo "Android project:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
 
-      # ==================================================
-      # 8. Verify Android Project
-      # ==================================================
-      - name: Verify Android project
+      # ============================================================
+      # 8. Check Gradle wrapper
+      # ============================================================
+      - name: Check Gradle Wrapper
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "Verifying Android project"
+          echo "Checking Gradle wrapper"
           echo "======================================"
 
-          test -f "$PROJECT_DIR/settings.gradle.kts" \
-            || test -f "$PROJECT_DIR/settings.gradle"
-
-          test -f "$PROJECT_DIR/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/build.gradle"
-
-          test -f "$PROJECT_DIR/app/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/app/build.gradle"
-
-          echo "Android project structure is valid."
+          if [ -f "$PROJECT_DIR/gradlew" ]; then
+            chmod +x "$PROJECT_DIR/gradlew"
+            echo "Gradle wrapper found."
+          else
+            echo "Gradle wrapper not found."
+            echo "Using installed Gradle."
+          fi
 
 
-      # ==================================================
-      # 9. Setup Gradle 8.9
-      # ==================================================
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-
-      # ==================================================
-      # 10. Configure local.properties
-      # ==================================================
-      - name: Configure Android SDK path
+      # ============================================================
+      # 9. Detect Gradle version
+      # ============================================================
+      - name: Detect Gradle Version
         shell: bash
         run: |
           set -e
 
-          echo "sdk.dir=$ANDROID_SDK_ROOT" \
-            > "$PROJECT_DIR/local.properties"
+          PROPS="$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
 
-          echo "local.properties:"
-          cat "$PROJECT_DIR/local.properties"
+          VERSION=""
+
+          if [ -f "$PROPS" ]; then
+            VERSION=$(grep -oP \
+              'gradle-\K[0-9.]+(?=-bin\.zip|-all\.zip)' \
+              "$PROPS" \
+              | head -n 1 || true)
+          fi
+
+          VERSION="${VERSION:-8.9}"
+
+          echo "Gradle version: $VERSION"
+
+          echo "GRADLE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
 
-      # ==================================================
+      # ============================================================
+      # 10. Install Gradle
+      # ============================================================
+      - name: Install Gradle
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "Installing Gradle $GRADLE_VERSION"
+          echo "======================================"
+
+          curl -fsSL \
+            -o gradle.zip \
+            "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+
+          rm -rf "$HOME/gradle-dist"
+          mkdir -p "$HOME/gradle-dist"
+
+          unzip -q gradle.zip -d "$HOME/gradle-dist"
+
+          echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+
+
+      # ============================================================
       # 11. Verify Gradle
-      # ==================================================
+      # ============================================================
       - name: Verify Gradle
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          set -e
-
           gradle --version
 
 
-      # ==================================================
-      # 12. Clean Project
-      # ==================================================
-      - name: Clean project
+      # ============================================================
+      # 12. local.properties
+      # ============================================================
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" \
+            > "$PROJECT_DIR/local.properties"
+
+
+      # ============================================================
+      # 13. Clean
+      # ============================================================
+      - name: Clean Project
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          set -e
-
-          echo "======================================"
-          echo "Cleaning project"
-          echo "======================================"
-
           gradle clean --stacktrace
 
 
-      # ==================================================
-      # 13. Build Debug APK
-      # ==================================================
+      # ============================================================
+      # 14. Build Debug APK
+      # ============================================================
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -e
 
           echo "======================================"
-          echo "Building Hesabdar Personal APK"
+          echo "Building Hesabdar APK"
           echo "======================================"
 
           gradle :app:assembleDebug --stacktrace
 
-          echo ""
-          echo "Build completed."
 
-
-      # ==================================================
-      # 14. Find APK
-      # ==================================================
-      - name: Find generated APK
+      # ============================================================
+      # 15. Find APK
+      # ============================================================
+      - name: Locate Generated APK
         shell: bash
         run: |
           set -e
@@ -273,365 +302,79 @@ jobs:
           echo "Searching for generated APK"
           echo "======================================"
 
-          OUTPUT_DIR="$PROJECT_DIR/app/build/outputs"
-
-          echo ""
-          echo "APK files found:"
-
-          find "$OUTPUT_DIR" \
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk" \
             -type f \
             -name "*.apk" \
-            -print \
-            -exec ls -lh {} \;
+            | head -n 1)
 
-          APK_FILE=$(find "$OUTPUT_DIR" \
-            -type f \
-            -name "app-debug.apk" \
-            -print -quit)
-
-          if [ -z "$APK_FILE" ]; then
-
-            APK_FILE=$(find "$OUTPUT_DIR" \
-              -type f \
-              -name "*.apk" \
-              -print -quit)
-
-          fi
-
-          if [ -z "$APK_FILE" ]; then
-
-            echo ""
+          if [ -z "$APK" ]; then
             echo "ERROR: APK was not generated."
 
             echo ""
-            echo "Build output:"
-            find "$PROJECT_DIR/app/build" \
-              -maxdepth 8 \
-              -type f \
-              | sort \
-              | head -500
+            echo "APK output directory:"
+            find "$PROJECT_DIR/app/build/outputs" \
+              -type f 2>/dev/null || true
 
             exit 1
           fi
 
-          echo ""
-          echo "Generated APK:"
-          echo "$APK_FILE"
+          echo "APK found:"
+          echo "$APK"
 
-          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
+          echo "APK_SOURCE=$APK" >> "$GITHUB_ENV"
 
 
-      # ==================================================
-      # 15. Rename APK
-      # ==================================================
-      - name: Prepare Hesabdar APK
+      # ============================================================
+      # 16. Rename APK
+      # ============================================================
+      - name: Rename APK
         shell: bash
         run: |
           set -e
 
-          FINAL_DIR="$PROJECT_DIR/app/build/outputs/apk/debug"
+          mkdir -p "$PROJECT_DIR/final-apk"
 
-          mkdir -p "$FINAL_DIR"
+          cp "$APK_SOURCE" \
+            "$PROJECT_DIR/final-apk/hesabdar.apk"
 
-          FINAL_APK="$FINAL_DIR/hesabdar.apk"
-
-          cp "$APK_FILE" "$FINAL_APK"
-
-          if [ ! -f "$FINAL_APK" ]; then
-            echo "ERROR: Final APK was not created."
-            exit 1
-          fi
-
-          echo ""
           echo "======================================"
           echo "Final APK"
           echo "======================================"
 
-          ls -lh "$FINAL_APK"
-
-          echo "FINAL_APK=$FINAL_APK" >> "$GITHUB_ENV"
+          ls -lh "$PROJECT_DIR/final-apk/hesabdar.apk"
 
 
-      # ==================================================
-      # 16. Verify APK
-      # ==================================================
-      - name: Verify final APK
+      # ============================================================
+      # 17. Verify APK
+      # ============================================================
+      - name: Verify Final APK
         shell: bash
         run: |
           set -e
 
-          echo "======================================"
-          echo "Verifying APK"
-          echo "======================================"
+          test -f \
+            "$PROJECT_DIR/final-apk/hesabdar.apk"
 
-          test -f "$FINAL_APK"
+          SIZE=$(stat -c%s \
+            "$PROJECT_DIR/final-apk/hesabdar.apk")
 
-          FILE_SIZE=$(stat -c%s "$FINAL_APK")
+          echo "APK size: $SIZE bytes"
 
-          echo "APK size: $FILE_SIZE bytes"
-
-          if [ "$FILE_SIZE" -lt 100000 ]; then
-            echo "ERROR: APK is unexpectedly small."
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "ERROR: APK file looks too small."
             exit 1
           fi
 
           echo "APK verification successful."
 
 
-      # ==================================================
-      # 17. Upload APK
-      # ==================================================
+      # ============================================================
+      # 18. Upload APK Artifact
+      # ============================================================
       - name: Upload Hesabdar APK
         uses: actions/upload-artifact@v4
         with:
-          name: hesabdar
-          path: ${{ env.FINAL_APK }}
-          if-no-files-found: error
-          retention-days: 30      # --------------------------------------------------
-      # 3. Android SDK
-      # --------------------------------------------------
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-
-      # --------------------------------------------------
-      # 4. Install Android SDK packages
-      # --------------------------------------------------
-      - name: Install Android SDK packages
-        run: |
-          set -e
-
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-
-      # --------------------------------------------------
-      # 5. Find Android project
-      # --------------------------------------------------
-      - name: Locate Android project
-        shell: bash
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "Searching for Android project..."
-          echo "======================================"
-
-          SETTINGS_FILE=$(find . \
-            -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERROR: settings.gradle(.kts) was not found."
-            echo ""
-            echo "Repository structure:"
-            find . -maxdepth 4 -type f | sort | head -300
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
-
-          PROJECT_DIR=$(realpath "$PROJECT_DIR")
-
-          echo "Android project:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo ""
-          echo "Project files:"
-          find "$PROJECT_DIR" -maxdepth 2 -type f | sort
-
-
-      # --------------------------------------------------
-      # 6. Verify Gradle project
-      # --------------------------------------------------
-      - name: Verify Gradle project
-        run: |
-          set -e
-
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
-
-          test -f "$PROJECT_DIR/settings.gradle.kts" \
-            || test -f "$PROJECT_DIR/settings.gradle"
-
-          test -f "$PROJECT_DIR/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/build.gradle"
-
-          test -f "$PROJECT_DIR/app/build.gradle.kts" \
-            || test -f "$PROJECT_DIR/app/build.gradle"
-
-          echo "Gradle project verified."
-
-
-      # --------------------------------------------------
-      # 7. Setup Gradle
-      # --------------------------------------------------
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-
-
-      # --------------------------------------------------
-      # 8. Write local.properties
-      # --------------------------------------------------
-      - name: Configure Android SDK path
-        run: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$PROJECT_DIR/local.properties"
-
-          echo "local.properties:"
-          cat "$PROJECT_DIR/local.properties"
-
-
-      # --------------------------------------------------
-      # 9. Check Gradle
-      # --------------------------------------------------
-      - name: Check Gradle
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle --version
-
-
-      # --------------------------------------------------
-      # 10. Clean
-      # --------------------------------------------------
-      - name: Clean project
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -e
-
-          gradle clean --stacktrace
-
-
-      # --------------------------------------------------
-      # 11. Build Debug APK
-      # --------------------------------------------------
-      - name: Build Debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "Building Hesabdar Personal APK"
-          echo "======================================"
-
-          gradle :app:assembleDebug --stacktrace
-
-
-      # --------------------------------------------------
-      # 12. Find generated APK
-      # --------------------------------------------------
-      - name: Locate generated APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "Searching for generated APK..."
-          echo "======================================"
-
-          echo ""
-          echo "All APK files:"
-          find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "*.apk" \
-            -print \
-            -exec ls -lh {} \;
-
-          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "app-debug.apk" \
-            -print -quit)
-
-          if [ -z "$APK_FILE" ]; then
-            APK_FILE=$(find "$PROJECT_DIR/app/build/outputs" \
-              -type f \
-              -name "*.apk" \
-              -print -quit)
-          fi
-
-          if [ -z "$APK_FILE" ]; then
-            echo ""
-            echo "ERROR: APK was not generated."
-            echo ""
-            echo "Build output:"
-            find "$PROJECT_DIR/app/build" -maxdepth 6 -type f | sort | head -300
-            exit 1
-          fi
-
-          echo ""
-          echo "Found APK:"
-          echo "$APK_FILE"
-
-          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
-
-
-      # --------------------------------------------------
-      # 13. Rename APK to simple stable name
-      # --------------------------------------------------
-      - name: Prepare final APK
-        shell: bash
-        run: |
-          set -e
-
-          OUTPUT_DIR="$PROJECT_DIR/app/build/outputs/apk/debug"
-
-          mkdir -p "$OUTPUT_DIR"
-
-          FINAL_APK="$OUTPUT_DIR/hesabdar.apk"
-
-          cp "$APK_FILE" "$FINAL_APK"
-
-          test -f "$FINAL_APK"
-
-          echo ""
-          echo "======================================"
-          echo "FINAL APK"
-          echo "======================================"
-
-          ls -lh "$FINAL_APK"
-
-          echo "FINAL_APK=$FINAL_APK" >> "$GITHUB_ENV"
-
-
-      # --------------------------------------------------
-      # 14. Verify final APK
-      # --------------------------------------------------
-      - name: Verify final APK
-        run: |
-          set -e
-
-          echo "Checking final APK..."
-
-          test -f "$FINAL_APK"
-
-          FILE_SIZE=$(stat -c%s "$FINAL_APK")
-
-          if [ "$FILE_SIZE" -lt 100000 ]; then
-            echo "ERROR: APK file is unexpectedly small."
-            exit 1
-          fi
-
-          echo "APK verified successfully."
-          echo "Size: $FILE_SIZE bytes"
-
-          ls -lh "$FINAL_APK"
-
-
-      # --------------------------------------------------
-      # 15. Upload APK
-      # --------------------------------------------------
-      - name: Upload Hesabdar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: hesabdar
-          path: ${{ env.FINAL_APK }}
+          name: hesabdar-v1.0.0-debug-${{ github.run_number }}
+          path: ${{ env.PROJECT_DIR }}/final-apk/hesabdar.apk
           if-no-files-found: error
           retention-days: 30
